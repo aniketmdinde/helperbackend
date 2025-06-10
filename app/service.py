@@ -328,3 +328,93 @@ def add_canonical_category():
     return jsonify({
         "message": f"Added canonical_category to {updated_count} products in company {company_id}."
     }), 200
+
+
+@service_bp.route('/bulk_recommend', methods=['POST'])
+def bulk_recommend():
+    data = request.get_json()
+    embeddings = data.get("embeddings", [])
+    company_id = data.get("company_id")
+
+    if not embeddings or not company_id:
+        return jsonify({"error": "Missing embeddings or company_id"}), 400
+
+    collection = get_collection(company_id)
+
+    avg_embedding = average_embedding(embeddings)
+    if not avg_embedding:
+        return jsonify({"error": "No valid embeddings found"}), 400
+
+    norm = np.linalg.norm(avg_embedding)
+    dim = len(avg_embedding)
+
+    categories = ["top", "bottom", "shoes", "accessory"]
+    result = {}
+
+    for cat in categories:
+        pipeline = [
+            {
+                "$match": {
+                    "canonical_category": cat
+                }
+            },
+            {
+                "$addFields": {
+                    "dotProduct": {
+                        "$reduce": {
+                            "input": { "$range": [0, dim] },
+                            "initialValue": 0,
+                            "in": {
+                                "$add": [
+                                    "$$value",
+                                    {
+                                        "$multiply": [
+                                            { "$arrayElemAt": ["$average_embedding", "$$this"] },
+                                            { "$arrayElemAt": [ { "$literal": avg_embedding }, "$$this" ] }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "norm": {
+                        "$sqrt": {
+                            "$reduce": {
+                                "input": { "$range": [0, dim] },
+                                "initialValue": 0,
+                                "in": {
+                                    "$add": [
+                                        "$$value",
+                                        {
+                                            "$multiply": [
+                                                { "$arrayElemAt": ["$average_embedding", "$$this"] },
+                                                { "$arrayElemAt": ["$average_embedding", "$$this"] }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "targetNorm": norm
+                }
+            },
+            {
+                "$addFields": {
+                    "cosineSimilarity": {
+                        "$divide": [
+                            "$dotProduct",
+                            { "$multiply": [ "$norm", "$targetNorm" ] }
+                        ]
+                    }
+                }
+            },
+            { "$sort": { "cosineSimilarity": -1 } },
+            { "$limit": 3 },
+            { "$project": { "slug": 1, "_id": 0 } }
+        ]
+
+        products = list(collection.aggregate(pipeline))
+        result[cat] = [p["slug"] for p in products]
+
+    return jsonify(result), 200
