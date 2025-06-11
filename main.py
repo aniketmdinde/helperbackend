@@ -5,4 +5,4 @@ app = create_app()
 CORS(app, resources={r"*": {"origins": "*"}})
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8080, use_reloader=False)
+    app.run(host='0.0.0.0', port=3000, use_reloader=False)

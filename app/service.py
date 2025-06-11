@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from .utils import get_collection
+from .utils import get_collection, get_chat_collection  
 import numpy as np
 
 def average_embedding(embedding_dicts):
@@ -418,3 +418,49 @@ def bulk_recommend():
         result[cat] = [p["slug"] for p in products]
 
     return jsonify(result), 200
+
+# Updated service.py - Add this route to your existing service.py file
+
+from flask import Blueprint, request, jsonify
+from .utils import get_collection, get_chat_collection  # Add get_chat_collection import
+import numpy as np
+from datetime import datetime
+
+# ... (keep all your existing imports and functions)
+
+# Add this new route to your existing service_bp blueprint
+@service_bp.route('/chatdata', methods=['POST'])
+def chatpost():
+    data = request.get_json()
+    query = data.get("query", "").strip()
+    company_id = data.get("company_id")
+
+    # Validate required fields
+    if not query:
+        return jsonify({"error": "Missing 'query' in JSON body"}), 400
+    
+    if not company_id:
+        return jsonify({"error": "Missing 'company_id' in JSON body"}), 400
+    
+    try:
+        # Get the chat collection for the specific company
+        chats_collection = get_chat_collection(company_id)
+        
+        # Prepare the chat document following the schema
+        chat_document = {
+            "query": query,
+            "createdAt": datetime.utcnow(),
+            "updatedAt": datetime.utcnow()
+        }
+
+        # Insert the document
+        result = chats_collection.insert_one(chat_document)
+        
+        return jsonify({
+            "message": "Chat data inserted successfully!",
+            "inserted_id": str(result.inserted_id),
+            "company_id": company_id
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": "Internal Server Error", "details": str(e)}), 500

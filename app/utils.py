@@ -16,3 +16,11 @@ def get_collection(company_id):
     MongoDB will create the collection if it does not exist.
     """
     return db[f"company{company_id}"]
+
+def get_chat_collection(company_id):
+    """
+    Returns a MongoDB chat collection object based on company_id.
+    Collection name format: chats{company_id}
+    MongoDB will create the collection if it does not exist.
+    """
+    return db[f"chats{company_id}"]
