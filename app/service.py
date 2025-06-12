@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from .utils import get_collection, get_chat_collection  
 import numpy as np
+from datetime import datetime
 
 def average_embedding(embedding_dicts):
     vectors = [e["embedding"] for e in embedding_dicts if "embedding" in e]
@@ -410,7 +411,7 @@ def bulk_recommend():
                 }
             },
             { "$sort": { "cosineSimilarity": -1 } },
-            { "$limit": 3 },
+            { "$limit": 1 }, #edit this
             { "$project": { "slug": 1, "_id": 0 } }
         ]
 
@@ -418,15 +419,6 @@ def bulk_recommend():
         result[cat] = [p["slug"] for p in products]
 
     return jsonify(result), 200
-
-# Updated service.py - Add this route to your existing service.py file
-
-from flask import Blueprint, request, jsonify
-from .utils import get_collection, get_chat_collection  # Add get_chat_collection import
-import numpy as np
-from datetime import datetime
-
-# ... (keep all your existing imports and functions)
 
 # Add this new route to your existing service_bp blueprint
 @service_bp.route('/chatdata', methods=['POST'])
@@ -464,3 +456,32 @@ def chatpost():
 
     except Exception as e:
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
+
+@service_bp.route('/embedding_stats', methods=['POST'])
+def embedding_stats():
+    data = request.get_json()
+    embeddings = data.get("embeddings", [])
+    company_id = data.get("company_id")
+
+    if not embeddings or not company_id:
+        return jsonify({"error": "Missing embeddings or company_id"}), 400
+
+    # Calculate average embedding from input
+    avg_embedding = average_embedding(embeddings)
+    if not avg_embedding:
+        return jsonify({"error": "Invalid embeddings provided"}), 400
+
+    # Connect to the appropriate collection
+    collection = get_collection(company_id)
+
+    # Retrieve lengths of all stored average embeddings
+    products_cursor = collection.find(
+        { "average_embedding": { "$exists": True, "$ne": [] } },
+        { "_id": 0, "average_embedding": 1 }
+    )
+    avg_lengths = [len(doc["average_embedding"]) for doc in products_cursor if isinstance(doc.get("average_embedding"), list)]
+
+    return jsonify({
+        "input_avg_length": len(avg_embedding),
+        "db_avg_embedding_lengths": avg_lengths
+    }), 200
